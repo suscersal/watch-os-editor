@@ -68,19 +68,20 @@ document.querySelector('#app').innerHTML = `
   <input class="n" id="pname" aria-label="Название проекта" size="14">
   <select id="ver" aria-label="Версия LVGL"><option value="8">LVGL 8.x</option><option value="9">LVGL 9.x</option></select>
   <span class="sp"></span>
-  <button id="bImp">Открыть project.json</button>
+  <button id="bImp">Открыть</button>
   <button id="bZip" class="pri">Скачать ZIP</button>
-  <button id="bReset">Сбросить</button>
+  <button id="bReset">Сброс</button>
   <input id="imp" type="file" accept=".json" hidden>
 </header>
 <main>
   <aside id="left"></aside>
   <div id="center">
     <div class="tabs" id="tabs"></div>
-    <div id="stage"><div id="cv"></div></div>
+    <div id="stage"><div id="cvw"><div id="cv"></div></div></div>
     <div id="codebox"></div>
   </div>
   <aside id="right"></aside>
+  <div id="dock" class="dockbar"><button data-d="left">Добавить</button><button data-d="right">Свойства</button></div>
 </main>`;
 const $ = (s) => document.querySelector(s);
 $('#pname').value = S.name; $('#ver').value = S.ver;
@@ -111,7 +112,7 @@ function inner(i) {
 function box(i) { return `left:${i.x}px;top:${i.y}px;width:${i.w}px;height:${i.type === 'label' || i.type === 'arc' ? 'auto' : i.h + 'px'}`; }
 function drawCanvas() {
   const cv = $('#cv');
-  cv.style.width = S.w + 'px'; cv.style.height = S.h + 'px'; cv.style.background = S.bg;
+  cv.style.width = S.w + 'px'; cv.style.height = S.h + 'px'; cv.style.background = S.bg; fit();
   cv.innerHTML = S.items.map((i, n) => `<div class="el${n === sel ? ' sel' : ''}" data-i="${n}" style="${box(i)}">${inner(i)}</div>`).join('');
 }
 
@@ -139,7 +140,19 @@ function drawTabs() {
     .map(([k, t]) => `<button data-t="${k}" class="${k === tab ? 'on' : ''}">${t}</button>`).join('');
   const code = tab !== 'canvas';
   $('#stage').style.display = code ? 'none' : ''; $('#codebox').style.display = code ? 'block' : 'none';
-  if (code) showCode();
+  if (code) showCode(); else fit();
+}
+let K = 1;
+function fit() {
+  const st = $('#stage'), w = st.clientWidth - 24, h = st.clientHeight - 24;
+  if (w < 50 || h < 50) return;
+  K = Math.min(1, w / S.w, h / S.h);
+  $('#cv').style.transform = `scale(${K})`;
+  const cw = $('#cvw'); cw.style.width = S.w * K + 'px'; cw.style.height = S.h * K + 'px';
+}
+function setDock(v) {
+  document.body.dataset.dock = v;
+  document.querySelectorAll('#dock button').forEach((b) => b.classList.toggle('on', b.dataset.d === v));
 }
 const all = () => { drawCanvas(); drawLeft(); drawRight(); refreshCode(); };
 
@@ -196,8 +209,8 @@ function refreshCode() { if (tab === 'ui.c' || tab === 'ui.h') showCode(); }
 $('#tabs').onclick = (e) => { const t = e.target.dataset.t; if (t) { tab = t; drawTabs(); } };
 $('#left').onclick = (e) => {
   const a = e.target.dataset.add, r = e.target.closest('[data-row]');
-  if (a) { S.items.push(mk(a, { x: 20 + S.items.length * 8, y: 20 + S.items.length * 8 }, S.items)); sel = S.items.length - 1; save(); all(); }
-  else if (r) { sel = +r.dataset.row; all(); }
+  if (a) { S.items.push(mk(a, { x: 20 + S.items.length * 8, y: 20 + S.items.length * 8 }, S.items)); sel = S.items.length - 1; save(); all(); setDock('right'); }
+  else if (r) { sel = +r.dataset.row; all(); setDock('right'); }
 };
 $('#right').onclick = (e) => {
   const a = e.target.dataset.a;
@@ -220,13 +233,13 @@ $('#right').oninput = (e) => {
 let drag = null;
 $('#cv').addEventListener('pointerdown', (e) => {
   const el = e.target.closest('.el');
-  if (!el) { sel = null; all(); return; }
+  if (!el) { sel = null; all(); setDock('left'); return; }
   sel = +el.dataset.i; const i = S.items[sel]; drag = { x: e.clientX, y: e.clientY, ox: i.x, oy: i.y };
-  drawCanvas(); drawLeft(); drawRight(); $('#cv').setPointerCapture(e.pointerId);
+  drawCanvas(); drawLeft(); drawRight(); setDock('right'); $('#cv').setPointerCapture(e.pointerId);
 });
 $('#cv').addEventListener('pointermove', (e) => {
   if (!drag) return; const i = S.items[sel];
-  i.x = Math.round(drag.ox + e.clientX - drag.x); i.y = Math.round(drag.oy + e.clientY - drag.y);
+  i.x = Math.round(drag.ox + (e.clientX - drag.x) / K); i.y = Math.round(drag.oy + (e.clientY - drag.y) / K);
   const el = $('#cv .sel'); el.style.left = i.x + 'px'; el.style.top = i.y + 'px';
 });
 $('#cv').addEventListener('pointerup', () => { if (drag) { drag = null; save(); drawRight(); } });
@@ -250,4 +263,6 @@ $('#imp').onchange = (e) => {
 };
 $('#bReset').onclick = () => { if (!confirm('Вернуть пример и стереть проект?')) return; S = fresh(); sel = null; $('#pname').value = S.name; $('#ver').value = S.ver; save(); all(); };
 
-all(); drawTabs();
+$('#dock').onclick = (e) => { if (e.target.dataset.d) setDock(e.target.dataset.d); };
+window.addEventListener('resize', fit);
+setDock('left'); all(); drawTabs();
